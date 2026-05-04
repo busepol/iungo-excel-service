@@ -1,26 +1,29 @@
 from flask import Flask, request, send_file
 import io
+import datetime
+import time
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, Protection
 from openpyxl.utils import get_column_letter
 
 app = Flask(__name__)
 
-DARK_BLUE  = "1A3C5E"
-MID_BLUE   = "2E6DA4"
-LIGHT_BLUE = "D6E4F0"
-YELLOW     = "FFF2CC"
+# --- COLOR PALETTE ---
+DARK_BLUE  = "203764"   # Professional IUNGO Blue
+MID_BLUE   = "305496"   # Instruction Row Blue
+LIGHT_BLUE = "D9E1F2"   # Summary/Total Background
+YELLOW     = "FFF2CC"   # Input fields
 WHITE      = "FFFFFF"
-GRAY       = "ECECEC"
-GREEN      = "E2EFDA"
+GRAY       = "F2F2F2"   # Table pre-filled background
+BORDER_COL = "B7B7B7"
 
-def tb(color="BBBBBB"):
-    s = Side(style="thin", color=color)
+def get_border():
+    s = Side(style="thin", color=BORDER_COL)
     return Border(left=s, right=s, top=s, bottom=s)
 
-def sc(ws, cell, value=None, bold=False, bg=None, fg="000000",
-       sz=9, ha="left", va="center", wrap=False, locked=True,
-       italic=False, fmt=None):
+def style_cell(ws, cell, value=None, bold=False, bg=None, fg="000000",
+               sz=9, ha="left", va="center", wrap=False, locked=True,
+               italic=False, fmt=None):
     c = ws[cell] if isinstance(cell, str) else cell
     if value is not None:
         c.value = value
@@ -28,7 +31,7 @@ def sc(ws, cell, value=None, bold=False, bg=None, fg="000000",
     if bg:
         c.fill = PatternFill("solid", start_color=bg)
     c.alignment = Alignment(horizontal=ha, vertical=va, wrap_text=wrap)
-    c.border = tb()
+    c.border = get_border()
     c.protection = Protection(locked=locked)
     if fmt:
         c.number_format = fmt
@@ -39,300 +42,154 @@ def build_iungo_xlsx(order):
     ws = wb.active
     ws.title = "ORDINE"
 
-    # Column widths
-    for i, w in enumerate([6,18,18,32,6,20,16,10,14,10,16,4], 1):
+    # --- 1. COLUMN WIDTHS (9 Columns now) ---
+    # #, Cod Art, Cod Forn, Desc, UM, Qty, Price, Sconto, Netto
+    widths = [6, 18, 18, 40, 8, 12, 15, 12, 18]
+    for i, w in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
-    # Row heights
-    ws.row_dimensions[1].height = 32
-    ws.row_dimensions[2].height = 16
-    ws.row_dimensions[3].height = 8
-    for r in range(4, 14):
-        ws.row_dimensions[r].height = 22
-    ws.row_dimensions[13].height = 8
-    ws.row_dimensions[14].height = 40
+    # --- 2. HEADER BLOCK (Rows 1 & 2) ---
+    ws.merge_cells("A1:I1")
+    style_cell(ws, "A1", "REGALIDEA S.R.L. — ORDINE FORNITORE",
+               bold=True, sz=14, bg=DARK_BLUE, fg=WHITE, ha="center")
 
-    doc_number    = order.get("docNumber", "ORD-AUTO")
-    issue_date    = order.get("issueDate", "")
-    delivery_date = order.get("deliveryDate", "")
-    destination   = order.get("destination", "")
-    customer_name = order.get("customerName", "")
-    customer_vat  = order.get("customerVat", "")
-    supplier_name = order.get("supplierName", "REGALIDEA S.R.L.")
-    supplier_vat  = order.get("supplierVat", "IT00000000000")
-    notes         = order.get("notes", "")
-    order_number  = order.get("orderNumber", "")
-    items         = order.get("items", [])
+    ws.merge_cells("A2:I2")
+    style_cell(ws, "A2", "I campi GIALLI sono da compilare dal fornitore. Non modificare la struttura.",
+               italic=True, sz=9, bg=MID_BLUE, fg=WHITE, ha="center")
 
-    # ── ROW 1: Title ──────────────────────────────────────────────────
-    ws.merge_cells("A1:L1")
-    sc(ws, "A1", "REGALIDEA S.R.L. — ORDINE FORNITORE",
-       bold=True, sz=14, bg=DARK_BLUE, fg=WHITE, ha="center")
-
-    # ── ROW 2: Subtitle ───────────────────────────────────────────────
-    ws.merge_cells("A2:L2")
-    sc(ws, "A2",
-       "I campi GIALLI sono da compilare dal fornitore. Non modificare la struttura.",
-       italic=True, sz=8, bg=MID_BLUE, fg=WHITE, ha="center")
-
-    # ── ROWS 4-7: Header block ────────────────────────────────────────
-    header_left = [
-        (4, "N. DOCUMENTO:",   doc_number,    GRAY,   True),
-        (5, "DATA EMISSIONE:", issue_date,    GRAY,   True),
-        (6, "DATA CONSEGNA:",  delivery_date, YELLOW, False),
-        (7, "DESTINAZIONE:",   destination,   YELLOW, False),
+    # --- 3. INFO BLOCK (Rows 4-7) ---
+    # Left Side: N Documento, Data Emiss, Data Cons, Destinazione
+    info_left = [
+        (4, "N. DOCUMENTO:",    order.get("docNumber", ""), GRAY,   True),
+        (5, "DATA EMISSIONE:",  order.get("issueDate", ""), GRAY,   True),
+        (6, "DATA CONSEGNA:",   order.get("deliveryDate", ""), YELLOW, False),
+        (7, "DESTINAZIONE:",    order.get("destination", ""), YELLOW, False),
     ]
-    header_right = [
-        (4, "NOME CLIENTE:",    customer_name, YELLOW, False),
-        (5, "P.IVA CLIENTE:",   customer_vat,  YELLOW, False),
-        (6, "NOME FORNITORE:",  supplier_name, GRAY,   True),
-        (7, "P.IVA FORNITORE:", supplier_vat,  GRAY,   True),
+    # Right Side: Nome Cliente, P.IVA, Nome Forn, P.IVA Forn
+    info_right = [
+        (4, "NOME CLIENTE:",    order.get("customerName", ""), YELLOW, False),
+        (5, "P.IVA CLIENTE:",   order.get("customerVat", ""),  YELLOW, False),
+        (6, "NOME FORNITORE:",  "REGALIDEA S.R.L.", GRAY, True),
+        (7, "P.IVA FORNITORE:", "IT00000000000", GRAY, True),
     ]
 
-    for row, label, value, bg, locked in header_left:
-        ws.merge_cells(f"A{row}:B{row}")
-        sc(ws, f"A{row}", label, bold=True, fg=DARK_BLUE, bg=GRAY, ha="right")
-        ws.merge_cells(f"C{row}:F{row}")
-        sc(ws, f"C{row}", value, bg=bg, locked=locked, bold=not locked)
+    for r, label, val, bg, lck in info_left:
+        ws.merge_cells(f"A{r}:B{r}")
+        style_cell(ws, f"A{r}", label, bold=True, fg=DARK_BLUE, ha="right")
+        ws.merge_cells(f"C{r}:E{r}")
+        style_cell(ws, f"C{r}", val, bg=bg, locked=lck)
 
-    for row, label, value, bg, locked in header_right:
-        ws.merge_cells(f"G{row}:H{row}")
-        sc(ws, f"G{row}", label, bold=True, fg=DARK_BLUE, bg=GRAY, ha="right")
-        ws.merge_cells(f"I{row}:L{row}")
-        sc(ws, f"I{row}", value, bg=bg, locked=locked, bold=not locked)
+    for r, label, val, bg, lck in info_right:
+        ws.cell(row=r, column=7, value=label).font = Font(bold=True, color=DARK_BLUE)
+        ws.cell(row=r, column=7).alignment = Alignment(horizontal="right")
+        ws.merge_cells(start_row=r, start_column=8, end_row=r, end_column=9)
+        style_cell(ws, ws.cell(row=r, column=8), val, bg=bg, locked=lck)
 
-    # ── ROW 9: Totals ─────────────────────────────────────────────────
-    last_item_row = 15 + len(items) - 1
-    ws.row_dimensions[9].height = 22
-    ws.merge_cells("A9:B9")
-    sc(ws, "A9", "TOTALE QUANTITÀ:", bold=True, fg=DARK_BLUE, bg=GRAY, ha="right")
-    ws.merge_cells("C9:F9")
-    sc(ws, "C9", f"=SUM(H15:H{last_item_row})",
-       bold=True, fg=DARK_BLUE, bg=LIGHT_BLUE, ha="center", fmt="#,##0")
-    ws.merge_cells("G9:H9")
-    sc(ws, "G9", "TOTALE IMPORTO:", bold=True, fg=DARK_BLUE, bg=GRAY, ha="right")
-    ws.merge_cells("I9:L9")
-    sc(ws, "I9", f"=SUM(K15:K{last_item_row})",
-       bold=True, fg=DARK_BLUE, bg=LIGHT_BLUE, ha="center", fmt="€#,##0.00")
+    # --- 4. TOTALS (Row 9) ---
+    # Formula sums Column F (6) for Qty and Column I (9) for Net Amount
+    style_cell(ws, "B9", "TOTALE QUANTITÀ:", bold=True, fg=DARK_BLUE, ha="right")
+    ws.merge_cells("C9:E9")
+    style_cell(ws, "C9", "=SUM(F15:F500)", bg=LIGHT_BLUE, bold=True, ha="center", fmt="#,##0")
 
-    # ── ROW 10: Notes ─────────────────────────────────────────────────
-    ws.row_dimensions[10].height = 22
-    ws.merge_cells("A10:B10")
-    sc(ws, "A10", "NOTE:", bold=True, fg=DARK_BLUE, bg=GRAY, ha="right")
-    ws.merge_cells("C10:L10")
-    sc(ws, "C10", notes, bg=YELLOW, locked=False)
+    style_cell(ws, "G9", "TOTALE IMPORTO:", bold=True, fg=DARK_BLUE, ha="right")
+    ws.merge_cells("H9:I9")
+    style_cell(ws, "H9", "=SUM(I15:I500)", bg=LIGHT_BLUE, bold=True, ha="center", fmt='€ #,##0.00')
 
-    # ── ROW 11: Order number ──────────────────────────────────────────
-    ws.row_dimensions[11].height = 22
-    ws.merge_cells("A11:B11")
-    sc(ws, "A11", "N. ORDINE CLIENTE:", bold=True, fg=DARK_BLUE, bg=GRAY, ha="right")
-    ws.merge_cells("C11:F11")
-    sc(ws, "C11", order_number, bg=YELLOW, locked=False)
+    # --- 5. TABLE HEADERS (Row 14) ---
+    headers = ["#", "CODICE ARTICOLO", "CODICE FORNITORE", "DESCRIZIONE", "U.M.", "QTÀ", "PREZZO LORDO €", "SCONTO %", "IMPORTO NETTO €"]
+    for col, text in enumerate(headers, 1):
+        c = ws.cell(row=14, column=col, value=text)
+        style_cell(ws, c, bold=True, bg=DARK_BLUE, fg=WHITE, ha="center", sz=8)
 
-    # ── ROW 14: Column headers ────────────────────────────────────────
-    headers = [
-        "#", "CODICE\nARTICOLO\n(Loro)", "CODICE\nFORNITORE\n(Loro)",
-        "DESCRIZIONE", "U.M.", "NOME CLIENTE\n(Riga)", "P.IVA CLIENTE\n(Riga)",
-        "QTÀ", "PREZZO\nLORDO €", "SCONTO\n%", "IMPORTO\nNETTO €", ""
-    ]
-    for col, h in enumerate(headers, 1):
-        c = ws.cell(row=14, column=col, value=h)
-        c.font = Font(name="Arial", bold=True, size=8, color=WHITE)
-        c.fill = PatternFill("solid", start_color=DARK_BLUE)
-        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        c.border = tb(WHITE)
-        c.protection = Protection(locked=True)
-
-    # ── ROWS 15+: Line items ──────────────────────────────────────────
+    # --- 6. LINE ITEMS (Rows 15+) ---
+    items = order.get("items", [])
     for idx, item in enumerate(items):
         row = 15 + idx
-        ws.row_dimensions[row].height = 18
-        is_even = idx % 2 == 0
-        amt_bg = LIGHT_BLUE if is_even else GREEN
-
-        cols = [
-            (1,  idx+1,                      GRAY,   "center", True,  False, "#,##0"),
-            (2,  item.get("itemCode",""),     GRAY,   "center", True,  False, None),
-            (3,  item.get("supplierCode",""), GRAY,   "center", True,  False, None),
-            (4,  item.get("description",""),  GRAY,   "left",   True,  False, None),
-            (5,  item.get("um","PZ"),         GRAY,   "center", True,  False, None),
-            (6,  item.get("custName",""),     YELLOW, "left",   False, False, None),
-            (7,  item.get("custVat",""),      YELLOW, "left",   False, False, None),
-            (8,  item.get("qty",0),           YELLOW, "center", False, True,  "#,##0"),
-            (9,  item.get("grossPrice",0),    GRAY,   "right",  True,  False, "€#,##0.00"),
-            (10, item.get("discount",0),      YELLOW, "center", False, False, "0.00%"),
-            (11, f"=IF(H{row}=0,\"\",IF(J{row}=0,H{row}*I{row},H{row}*I{row}*(1-J{row})))",
-                 amt_bg, "right", True, False, "€#,##0.00"),
+        # Formula for Col I: F * G * (1 - H/100)
+        netto_formula = f"=F{row}*G{row}*(1-H{row}/100)"
+        
+        row_data = [
+            (1, idx+1, GRAY, True),                        # #
+            (2, item.get("itemCode",""), YELLOW, False),   # Cod Art
+            (3, item.get("supplierCode",""), YELLOW, False),# Cod Forn
+            (4, item.get("description",""), YELLOW, False),# Desc
+            (5, item.get("um","PZ"), YELLOW, False),       # U.M.
+            (6, item.get("qty",0), YELLOW, False),         # Qty
+            (7, item.get("grossPrice",0), YELLOW, False),  # Price
+            (8, item.get("discount",0), YELLOW, False),    # Sconto
+            (9, netto_formula, LIGHT_BLUE, True)           # Netto
         ]
-        for col, val, bg, ha, locked, bold, fmt in cols:
-            c = ws.cell(row=row, column=col, value=val)
-            c.font = Font(name="Arial", size=9, bold=bold,
-                          color=DARK_BLUE if col == 11 else "000000")
-            c.fill = PatternFill("solid", start_color=bg)
-            c.alignment = Alignment(horizontal=ha, vertical="center")
-            c.border = tb()
-            c.protection = Protection(locked=locked)
-            if fmt:
-                c.number_format = fmt
 
-    # Empty filler rows
-    for i in range(len(items), 30):
-        row = 15 + i
-        ws.row_dimensions[row].height = 18
-        for col in range(1, 12):
-            is_even = i % 2 == 0
-            amt_bg = LIGHT_BLUE if is_even else GREEN
-            bg = YELLOW if col in [6,7,8,10] else (amt_bg if col == 11 else GRAY)
-            c = ws.cell(row=row, column=col)
-            c.fill = PatternFill("solid", start_color=bg)
-            c.border = tb()
-            c.protection = Protection(locked=col not in [6,7,8,10])
+        for col, val, bg, lck in row_data:
+            fmt = '€ #,##0.00' if col in [7, 9] else ("#,##0" if col == 6 else None)
+            style_cell(ws, ws.cell(row=row, column=col), val, bg=bg, locked=lck, fmt=fmt, ha="center" if col != 4 else "left")
 
-    # ── Instructions sheet ────────────────────────────────────────────
-    ws2 = wb.create_sheet("ISTRUZIONI")
-    ws2.column_dimensions["A"].width = 80
-    for row, text, bold, sz, bg, fg in [
-        (1, "ISTRUZIONI PER LA COMPILAZIONE", True, 13, DARK_BLUE, WHITE),
-        (3, "LEGENDA COLORI", True, 10, MID_BLUE, WHITE),
-        (4, "🟡 GIALLO = da compilare", False, 9, None, "000000"),
-        (5, "⬜ GRIGIO = pre-compilato (NON modificare)", False, 9, None, "555555"),
-        (6, "🔵 BLU/VERDE = calcolato automaticamente", False, 9, None, "1A3C5E"),
-        (8, "INVIO ORDINE", True, 10, MID_BLUE, WHITE),
-        (9, "• Inviare a: ordini@regalidea.it", False, 9, None, "000000"),
-        (10, "• NON modificare la struttura del file", False, 9, None, "CC0000"),
-    ]:
-        ws2.row_dimensions[row].height = 22
-        c = ws2.cell(row=row, column=1, value=text)
-        c.font = Font(name="Arial", bold=bold, size=sz, color=fg)
-        if bg:
-            c.fill = PatternFill("solid", start_color=bg)
-        c.alignment = Alignment(horizontal="left", vertical="center")
-    ws2.protection.sheet = True
-    ws2.protection.password = "regalidea2025"
+    # Fill remaining rows up to 100 for a clean look
+    for r in range(15 + len(items), 101):
+        for c in range(1, 10):
+            bg = YELLOW if 2 <= c <= 8 else (GRAY if c == 1 else LIGHT_BLUE)
+            style_cell(ws, ws.cell(row=r, column=c), bg=bg, locked=not (2 <= c <= 8))
+            if c == 9: 
+                ws.cell(row=r, column=9).value = f"=F{r}*G{r}*(1-H{r}/100)"
+                ws.cell(row=r, column=9).number_format = '€ #,##0.00'
 
-    # ── Protect main sheet ────────────────────────────────────────────
+    # --- 7. INSTRUCTIONS & PROTECTION ---
+    ws_instr = wb.create_sheet("ISTRUZIONI")
+    ws_instr.column_dimensions["B"].width = 80
+    style_cell(ws_instr, "B2", "ISTRUZIONI PER LA COMPILAZIONE", bold=True, sz=14, fg=DARK_BLUE)
+    style_cell(ws_instr, "B4", "1. Compilare solo le celle evidenziate in GIALLO.")
+    style_cell(ws_instr, "B5", "2. I totali e gli importi netti si calcolano automaticamente.")
+    ws_instr.protection.sheet = True
+
     ws.protection.sheet = True
-    ws.protection.password = "regalidea2025"
-    ws.protection.selectLockedCells = False
-    ws.protection.selectUnlockedCells = False
-    ws.print_area = "A1:L50"
-    ws.page_setup.orientation = "landscape"
-    ws.page_setup.fitToPage = True
-    ws.page_setup.fitToWidth = 1
-
-    # Save to buffer
+    ws.protection.password = "regalidea2026"
+    
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
     return buf
 
-
 @app.route("/generate", methods=["POST"])
 def generate():
     data = request.get_json()
-    if not data:
-        return {"error": "No JSON body"}, 400
-
+    if not data: return {"error": "No JSON body"}, 400
+    
     order = data.get("order", data)
+    
+    # Dynamic document info
+    now = datetime.datetime.now()
+    doc_num = f"ORD-{now.year}-{str(int(time.time()))[-6:]}"
+    issue_date = now.strftime("%d/%m/%Y")
 
-    # Map from n8n order format to our format
-    isPAC       = "PAC 2000" in (order.get("customer") or "")
-    isGabrielli = "GABRIELLI" in (order.get("customer") or "")
-    isDrink     = "DRINK" in (order.get("customer") or "")
-
-    delivery_date = order.get("deliveryWindow") or order.get("deliveryDate") or ""
-    destination   = order.get("deliveryLocation") or order.get("luogoConsegna") or order.get("pointOfSale") or ""
-    customer_name = order.get("pointOfSale") or order.get("customer") or ""
-    from datetime import datetime
-    issue_date = datetime.now().strftime("%d/%m/%Y")
-    import time
-    doc_number = f"ORD-{datetime.now().year}-{str(int(time.time()))[-6:]}"
-
+    # Map n8n specific fields
     items = []
     for i in order.get("items", []):
-        if isPAC:
-            items.append({
-                "itemCode":     i.get("codice", ""),
-                "supplierCode": i.get("codice", ""),
-                "description":  i.get("descrizione", ""),
-                "um":           "PZ",
-                "custName":     customer_name,
-                "custVat":      "",
-                "qty":          i.get("quantita", 0),
-                "grossPrice":   i.get("fascia", 0),
-                "discount":     0,
-            })
-        elif isGabrielli:
-            items.append({
-                "itemCode":     "",
-                "supplierCode": "",
-                "description":  i.get("descrizione", ""),
-                "um":           "PZ",
-                "custName":     "GABRIELLI",
-                "custVat":      "",
-                "qty":          i.get("quantitaGabrielli") or i.get("quantita", 0),
-                "grossPrice":   0,
-                "discount":     0,
-            })
-        elif isDrink:
-            items.append({
-                "itemCode":     i.get("codice", ""),
-                "supplierCode": i.get("codice", ""),
-                "description":  i.get("descrizione", ""),
-                "um":           "PZ",
-                "custName":     order.get("luogoConsegna", ""),
-                "custVat":      "",
-                "qty":          i.get("quantita", 0),
-                "grossPrice":   0,
-                "discount":     0,
-            })
-        else:
-            items.append({
-                "itemCode":     i.get("codice", ""),
-                "supplierCode": i.get("codice", ""),
-                "description":  i.get("descrizione") or i.get("description", ""),
-                "um":           i.get("um", "PZ"),
-                "custName":     customer_name,
-                "custVat":      "",
-                "qty":          i.get("quantita") or i.get("quantity", 0),
-                "grossPrice":   i.get("prezzo") or i.get("fascia", 0),
-                "discount":     i.get("sconto", 0),
-            })
+        items.append({
+            "itemCode": i.get("codice") or i.get("itemCode", ""),
+            "supplierCode": i.get("codice") or i.get("supplierCode", ""),
+            "description": i.get("descrizione") or i.get("description", ""),
+            "um": i.get("um", "PZ"),
+            "qty": i.get("quantitaGabrielli") or i.get("quantita") or i.get("quantity", 0),
+            "grossPrice": i.get("prezzo") or i.get("fascia", 0),
+            "discount": i.get("sconto", 0),
+        })
 
     order_data = {
-        "docNumber":    doc_number,
-        "issueDate":    issue_date,
-        "deliveryDate": delivery_date,
-        "destination":  destination,
-        "customerName": customer_name,
-        "customerVat":  order.get("customerVat", ""),
-        "supplierName": "REGALIDEA S.R.L.",
-        "supplierVat":  "IT00000000000",
-        "notes":        order.get("notes") or order.get("pagamento", ""),
-        "orderNumber":  order.get("orderNumber", ""),
-        "items":        items,
+        "docNumber": doc_num,
+        "issueDate": issue_date,
+        "deliveryDate": order.get("deliveryDate") or order.get("deliveryWindow") or "",
+        "destination": order.get("luogoConsegna") or order.get("destination") or "",
+        "customerName": order.get("customer") or order.get("pointOfSale") or "",
+        "customerVat": order.get("customerVat", ""),
+        "items": items
     }
 
     buf = build_iungo_xlsx(order_data)
+    filename = f"IUNGO_ORDER_{order_data['customerName'].replace(' ', '_')}.xlsx"
 
-    safe_customer = (order.get("customer") or "ORDER").replace(" ", "_")
-    safe_date = delivery_date.replace("/", "-")
-    filename = f"IUNGO_{safe_customer}_{safe_date}.xlsx"
-
-    return send_file(
-        buf,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        as_attachment=True,
-        download_name=filename
-    )
-
-
-@app.route("/health", methods=["GET"])
-def health():
-    return {"status": "ok", "service": "IUNGO Excel Generator"}
-
+    return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=filename)
 
 if __name__ == "__main__":
     import os
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
