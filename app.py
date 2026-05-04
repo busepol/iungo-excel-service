@@ -199,112 +199,120 @@ class RegalideaPDF(FPDF):
         self.ln(5)
 
 # ==========================================
-# ROUTE 2: THE PDF GENERATOR
+# ROUTE 2: THE PDF GENERATOR (UPDATED)
 # ==========================================
 @app.route("/generate-pdf", methods=["POST"])
 def generate_pdf():
-    data = request.get_json()
-    if not data: return {"error": "No JSON body"}, 400
-    
-    order = data.get("order", data)
+    try:
+        # force=True ignores missing headers from n8n
+        data = request.get_json(force=True) 
+        if not data: return {"error": "No JSON body received"}, 400
+        
+        order = data.get("order", data)
 
-    pdf = RegalideaPDF(orientation="L", unit="mm", format="A4")
-    pdf.add_page()
+        pdf = RegalideaPDF(orientation="L", unit="mm", format="A4")
+        pdf.add_page()
 
-    pdf.set_font("helvetica", "B", 9)
-    blue_text = (32, 55, 100)
-    yellow_fill = (255, 242, 204)
-    
-    now = datetime.datetime.now()
-    doc_num = f"ORD-{now.year}-{str(int(time.time()))[-6:]}"
-    customer_name = str(order.get("customer") or order.get("pointOfSale") or "")
+        pdf.set_font("helvetica", "B", 9)
+        blue_text = (32, 55, 100)
+        yellow_fill = (255, 242, 204)
+        
+        now = datetime.datetime.now()
+        doc_num = f"ORD-{now.year}-{str(int(time.time()))[-6:]}"
+        customer_name = str(order.get("customer") or order.get("pointOfSale") or "")
 
-    # ROW 1
-    pdf.set_text_color(*blue_text)
-    pdf.cell(35, 6, "N. DOCUMENTO:", border=1, align="R")
-    pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
-    pdf.cell(80, 6, doc_num, border=1)
+        # ROW 1
+        pdf.set_text_color(*blue_text)
+        pdf.cell(35, 6, "N. DOCUMENTO:", border=1, align="R")
+        pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
+        pdf.cell(80, 6, doc_num, border=1)
 
-    pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
-    pdf.cell(35, 6, "NOME CLIENTE:", border=1, align="R")
-    pdf.set_fill_color(*yellow_fill)
-    pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
-    pdf.cell(127, 6, customer_name, border=1, fill=True, ln=True)
-
-    # ROW 2
-    del_date = str(order.get("deliveryDate") or order.get("deliveryWindow") or "")[:10]
-    dest = str(order.get("luogoConsegna") or order.get("destination") or "")[:65]
-
-    pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
-    pdf.cell(35, 6, "DATA CONSEGNA:", border=1, align="R")
-    pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
-    pdf.cell(80, 6, del_date, border=1)
-
-    pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
-    pdf.cell(35, 6, "DESTINAZIONE:", border=1, align="R")
-    pdf.set_fill_color(*yellow_fill)
-    pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
-    pdf.cell(127, 6, dest, border=1, fill=True, ln=True)
-    pdf.ln(5)
-
-    # TABLE HEADERS
-    pdf.set_fill_color(32, 55, 100)
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font("helvetica", "B", 8)
-    cols = [("CODICE", 25), ("DESCRIZIONE", 130), ("U.M.", 10), ("QTÀ", 15), 
-            ("PREZZO €", 25), ("SCONTO %", 22), ("NETTO €", 50)]
-
-    for col_name, width in cols:
-        pdf.cell(width, 7, col_name, border=1, align="C", fill=True)
-    pdf.ln()
-
-    # TABLE ROWS
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font("helvetica", "", 8)
-
-    items = order.get("items", [])
-    total_qty = 0
-    total_amount = 0
-
-    for i in items:
-        # Extract fields using your exact logic
-        code = str(i.get("itemCode") or i.get("codice") or "")
-        desc = str(i.get("descrizione") or i.get("description", ""))[:75]
-        qty = float(i.get("quantitaGabrielli") or i.get("quantita") or i.get("quantity") or 0)
-        price = float(i.get("prezzo") or i.get("fascia") or i.get("grossPrice") or 0)
-        net = qty * price
-
-        total_qty += qty
-        total_amount += net
-
+        pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
+        pdf.cell(35, 6, "NOME CLIENTE:", border=1, align="R")
         pdf.set_fill_color(*yellow_fill)
-        pdf.cell(25, 6, code, border=1, align="C", fill=True)
-        pdf.cell(130, 6, desc, border=1, fill=True)
-        pdf.cell(10, 6, "PZ", border=1, align="C")
-        pdf.cell(15, 6, str(int(qty)), border=1, align="C")
-        pdf.cell(25, 6, f"€ {price:.2f}", border=1, align="R", fill=True)
-        pdf.cell(22, 6, "0", border=1, align="C", fill=True)
-        pdf.cell(50, 6, f"€ {net:.2f}", border=1, align="R", fill=True)
+        pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
+        pdf.cell(127, 6, customer_name, border=1, fill=True, ln=True)
+
+        # ROW 2
+        del_date = str(order.get("deliveryDate") or order.get("deliveryWindow") or "")[:10]
+        dest = str(order.get("luogoConsegna") or order.get("destination") or "")[:65]
+
+        pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
+        pdf.cell(35, 6, "DATA CONSEGNA:", border=1, align="R")
+        pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
+        pdf.cell(80, 6, del_date, border=1)
+
+        pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
+        pdf.cell(35, 6, "DESTINAZIONE:", border=1, align="R")
+        pdf.set_fill_color(*yellow_fill)
+        pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
+        pdf.cell(127, 6, dest, border=1, fill=True, ln=True)
+        pdf.ln(5)
+
+        # TABLE HEADERS - Changed € to EUR
+        pdf.set_fill_color(32, 55, 100)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("helvetica", "B", 8)
+        cols = [("CODICE", 25), ("DESCRIZIONE", 130), ("U.M.", 10), ("QTÀ", 15), 
+                ("PREZZO EUR", 25), ("SCONTO %", 22), ("NETTO EUR", 50)]
+
+        for col_name, width in cols:
+            pdf.cell(width, 7, col_name, border=1, align="C", fill=True)
         pdf.ln()
 
-    # FOOTER TOTALS
-    pdf.ln(2)
-    pdf.set_font("helvetica", "B", 10)
-    pdf.cell(180, 8, f"TOTALE QUANTITÀ:  {int(total_qty)}", border=1, align="R")
-    pdf.set_fill_color(*yellow_fill)
-    pdf.cell(97, 8, f"TOTALE IMPORTO:  € {total_amount:.2f}", border=1, align="R", fill=True)
+        # TABLE ROWS
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_font("helvetica", "", 8)
 
-    pdf_buffer = io.BytesIO()
-    pdf.output(pdf_buffer)
-    pdf_buffer.seek(0)
+        items = order.get("items", [])
+        total_qty = 0
+        total_amount = 0
 
-    safe_name = customer_name.replace(' ', '_').replace('/', '')
-    return send_file(
-        pdf_buffer,
-        mimetype="application/pdf",
-        as_attachment=True,
-        download_name=f"REGALIDEA_PDF_{safe_name}.pdf"
-    )
+        for i in items:
+            code = str(i.get("itemCode") or i.get("codice") or "")
+            desc = str(i.get("descrizione") or i.get("description", ""))[:75]
+            qty = float(i.get("quantitaGabrielli") or i.get("quantita") or i.get("quantity") or 0)
+            price = float(i.get("prezzo") or i.get("fascia") or i.get("grossPrice") or 0)
+            net = qty * price
+
+            total_qty += qty
+            total_amount += net
+
+            pdf.set_fill_color(*yellow_fill)
+            pdf.cell(25, 6, code, border=1, align="C", fill=True)
+            pdf.cell(130, 6, desc, border=1, fill=True)
+            pdf.cell(10, 6, "PZ", border=1, align="C")
+            pdf.cell(15, 6, str(int(qty)), border=1, align="C")
+            # Changed € to EUR
+            pdf.cell(25, 6, f"EUR {price:.2f}", border=1, align="R", fill=True)
+            pdf.cell(22, 6, "0", border=1, align="C", fill=True)
+            # Changed € to EUR
+            pdf.cell(50, 6, f"EUR {net:.2f}", border=1, align="R", fill=True)
+            pdf.ln()
+
+        # FOOTER TOTALS - Changed € to EUR
+        pdf.ln(2)
+        pdf.set_font("helvetica", "B", 10)
+        pdf.cell(180, 8, f"TOTALE QUANTITA:  {int(total_qty)}", border=1, align="R")
+        pdf.set_fill_color(*yellow_fill)
+        pdf.cell(97, 8, f"TOTALE IMPORTO:  EUR {total_amount:.2f}", border=1, align="R", fill=True)
+
+        pdf_buffer = io.BytesIO()
+        pdf.output(pdf_buffer)
+        pdf_buffer.seek(0)
+
+        safe_name = customer_name.replace(' ', '_').replace('/', '')
+        return send_file(
+            pdf_buffer,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=f"REGALIDEA_PDF_{safe_name}.pdf"
+        )
+        
+    except Exception as e:
+        # CRASH REPORTER: If it fails, send the exact error back to n8n!
+        import traceback
+        return {"CRASH_REPORT": str(e), "DETAILS": traceback.format_exc()}, 500
 
 if __name__ == "__main__":
     import os
