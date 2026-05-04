@@ -5,11 +5,13 @@ import time
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, Protection
 from openpyxl.utils import get_column_letter
-from xhtml2pdf import pisa # Import the HTML to PDF library
+from fpdf import FPDF # Pure Python PDF library (no Railway errors!)
 
 app = Flask(__name__)
 
-# --- COLOR PALETTE ---
+# ==========================================
+# EXCEL STYLING & HELPERS (Your exact code)
+# ==========================================
 DARK_BLUE  = "203764"   
 MID_BLUE   = "305496"   
 LIGHT_BLUE = "D9E1F2"   
@@ -105,15 +107,15 @@ def build_iungo_xlsx(order):
         netto_formula = f"=F{row}*G{row}*(1-H{row}/100)"
         
         row_data = [
-            (1, idx+1, GRAY, True),                        # #
-            (2, item.get("itemCode",""), YELLOW, False),   # Cod Art (Loro)
-            (3, item.get("supplierCode",""), YELLOW, False),# Cod Forn (Fills only if distinct)
-            (4, item.get("description",""), YELLOW, False),# Desc
-            (5, item.get("um","PZ"), YELLOW, False),       # U.M.
-            (6, item.get("qty",0), YELLOW, False),         # Qty
-            (7, item.get("grossPrice",0), YELLOW, False),  # Price
-            (8, item.get("discount",0), YELLOW, False),    # Sconto
-            (9, netto_formula, LIGHT_BLUE, True)           # Netto
+            (1, idx+1, GRAY, True),                        
+            (2, item.get("itemCode",""), YELLOW, False),   
+            (3, item.get("supplierCode",""), YELLOW, False),
+            (4, item.get("description",""), YELLOW, False),
+            (5, item.get("um","PZ"), YELLOW, False),       
+            (6, item.get("qty",0), YELLOW, False),         
+            (7, item.get("grossPrice",0), YELLOW, False),  
+            (8, item.get("discount",0), YELLOW, False),    
+            (9, netto_formula, LIGHT_BLUE, True)           
         ]
 
         for col, val, bg, lck in row_data:
@@ -139,7 +141,7 @@ def build_iungo_xlsx(order):
     return buf
 
 # ==========================================
-# DOOR #1: The Excel Generator
+# ROUTE 1: THE EXCEL GENERATOR (Your exact code)
 # ==========================================
 @app.route("/generate", methods=["POST"])
 def generate():
@@ -154,7 +156,7 @@ def generate():
     items = []
     for i in order.get("items", []):
         item_code = i.get("itemCode") or i.get("codice") or ""
-        supplier_code = i.get("supplierCode", "")
+        supplier_code = i.get("supplierCode", "") 
         
         items.append({
             "itemCode": item_code,
@@ -182,45 +184,128 @@ def generate():
     return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                      as_attachment=True, download_name=filename)
 
+
 # ==========================================
-# DOOR #2: The PDF Generator (NEW)
+# PDF STYLING & CLASS
 # ==========================================
-@app.route('/html-to-pdf', methods=['POST'])
-def html_to_pdf():
-    # 1. Grab the JSON that n8n sends to us
+class RegalideaPDF(FPDF):
+    def header(self):
+        self.set_fill_color(32, 55, 100) # #203764
+        self.set_text_color(255, 255, 255)
+        self.set_font("helvetica", "B", 14)
+        self.cell(0, 10, "REGALIDEA S.R.L. - ORDINE FORNITORE", align="C", fill=True, ln=True)
+        self.set_font("helvetica", "I", 10)
+        self.cell(0, 6, "I campi GIALLI sono da compilare dal fornitore.", align="C", fill=True, ln=True)
+        self.ln(5)
+
+# ==========================================
+# ROUTE 2: THE PDF GENERATOR
+# ==========================================
+@app.route("/generate-pdf", methods=["POST"])
+def generate_pdf():
     data = request.get_json()
+    if not data: return {"error": "No JSON body"}, 400
     
-    # Check if the JSON has the "html" string inside it
-    if not data or 'html' not in data:
-        return {"error": "No HTML content provided"}, 400
-        
-    html_content = data['html']
+    order = data.get("order", data)
+
+    pdf = RegalideaPDF(orientation="L", unit="mm", format="A4")
+    pdf.add_page()
+
+    pdf.set_font("helvetica", "B", 9)
+    blue_text = (32, 55, 100)
+    yellow_fill = (255, 242, 204)
     
-    # 2. Create an empty bucket in the server's memory to hold the PDF
+    now = datetime.datetime.now()
+    doc_num = f"ORD-{now.year}-{str(int(time.time()))[-6:]}"
+    customer_name = str(order.get("customer") or order.get("pointOfSale") or "")
+
+    # ROW 1
+    pdf.set_text_color(*blue_text)
+    pdf.cell(35, 6, "N. DOCUMENTO:", border=1, align="R")
+    pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
+    pdf.cell(80, 6, doc_num, border=1)
+
+    pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
+    pdf.cell(35, 6, "NOME CLIENTE:", border=1, align="R")
+    pdf.set_fill_color(*yellow_fill)
+    pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
+    pdf.cell(127, 6, customer_name, border=1, fill=True, ln=True)
+
+    # ROW 2
+    del_date = str(order.get("deliveryDate") or order.get("deliveryWindow") or "")[:10]
+    dest = str(order.get("luogoConsegna") or order.get("destination") or "")[:65]
+
+    pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
+    pdf.cell(35, 6, "DATA CONSEGNA:", border=1, align="R")
+    pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
+    pdf.cell(80, 6, del_date, border=1)
+
+    pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
+    pdf.cell(35, 6, "DESTINAZIONE:", border=1, align="R")
+    pdf.set_fill_color(*yellow_fill)
+    pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
+    pdf.cell(127, 6, dest, border=1, fill=True, ln=True)
+    pdf.ln(5)
+
+    # TABLE HEADERS
+    pdf.set_fill_color(32, 55, 100)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("helvetica", "B", 8)
+    cols = [("CODICE", 25), ("DESCRIZIONE", 130), ("U.M.", 10), ("QTÀ", 15), 
+            ("PREZZO €", 25), ("SCONTO %", 22), ("NETTO €", 50)]
+
+    for col_name, width in cols:
+        pdf.cell(width, 7, col_name, border=1, align="C", fill=True)
+    pdf.ln()
+
+    # TABLE ROWS
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("helvetica", "", 8)
+
+    items = order.get("items", [])
+    total_qty = 0
+    total_amount = 0
+
+    for i in items:
+        # Extract fields using your exact logic
+        code = str(i.get("itemCode") or i.get("codice") or "")
+        desc = str(i.get("descrizione") or i.get("description", ""))[:75]
+        qty = float(i.get("quantitaGabrielli") or i.get("quantita") or i.get("quantity") or 0)
+        price = float(i.get("prezzo") or i.get("fascia") or i.get("grossPrice") or 0)
+        net = qty * price
+
+        total_qty += qty
+        total_amount += net
+
+        pdf.set_fill_color(*yellow_fill)
+        pdf.cell(25, 6, code, border=1, align="C", fill=True)
+        pdf.cell(130, 6, desc, border=1, fill=True)
+        pdf.cell(10, 6, "PZ", border=1, align="C")
+        pdf.cell(15, 6, str(int(qty)), border=1, align="C")
+        pdf.cell(25, 6, f"€ {price:.2f}", border=1, align="R", fill=True)
+        pdf.cell(22, 6, "0", border=1, align="C", fill=True)
+        pdf.cell(50, 6, f"€ {net:.2f}", border=1, align="R", fill=True)
+        pdf.ln()
+
+    # FOOTER TOTALS
+    pdf.ln(2)
+    pdf.set_font("helvetica", "B", 10)
+    pdf.cell(180, 8, f"TOTALE QUANTITÀ:  {int(total_qty)}", border=1, align="R")
+    pdf.set_fill_color(*yellow_fill)
+    pdf.cell(97, 8, f"TOTALE IMPORTO:  € {total_amount:.2f}", border=1, align="R", fill=True)
+
     pdf_buffer = io.BytesIO()
-    
-    # 3. Use the xhtml2pdf library (pisa) to turn the HTML into a real PDF and put it in the bucket
-    pisa_status = pisa.CreatePDF(html_content, dest=pdf_buffer)
-    
-    # If the library failed, send an error back to n8n
-    if pisa_status.err:
-        return {"error": "Failed to generate PDF"}, 500
-        
-    # 4. "Rewind" the bucket so it can be read from the beginning
+    pdf.output(pdf_buffer)
     pdf_buffer.seek(0)
-    
-    # Figure out the file name (use the title from n8n, or a default)
-    title = data.get('title', 'Order_Document')
-    
-    # Send the bucket back to n8n as a physical file attachment
+
+    safe_name = customer_name.replace(' ', '_').replace('/', '')
     return send_file(
-        pdf_buffer, 
-        mimetype='application/pdf', 
-        as_attachment=True, 
-        download_name=f"{title}.pdf"
+        pdf_buffer,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"REGALIDEA_PDF_{safe_name}.pdf"
     )
 
-# --- START THE APP ---
 if __name__ == "__main__":
     import os
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
