@@ -6,7 +6,6 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" />
-  <img src="https://img.shields.io/badge/Flask-000000?style=for-the-badge&logo=flask&logoColor=white" />
   <img src="https://img.shields.io/badge/n8n-FF6D5A?style=for-the-badge&logo=n8n&logoColor=white" />
   <img src="https://img.shields.io/badge/Railway-131415?style=for-the-badge&logo=railway&logoColor=white" />
 </p>
@@ -21,7 +20,7 @@
 
 The **IUNGO Order Automator** is a specialized microservice hosted on **Railway** that acts as the "processing brain" for the **Regalidea** automation ecosystem. 
 
-When **n8n** extracts order data from varied sources (GABRIELLI, PAC 2000, etc.), it sends a JSON payload to this service. The service then dynamically builds a pixel-perfect, protected Excel file from scratch, featuring live formulas and professional styling.
+When **n8n** extracts order data from varied sources, it sends a JSON payload to this service. The service then dynamically builds a pixel-perfect, protected Excel file from scratch, featuring live formulas and professional styling.
 
 ## ✨ Key Features
 
