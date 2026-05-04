@@ -5,6 +5,7 @@ import time
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, Protection
 from openpyxl.utils import get_column_letter
+from xhtml2pdf import pisa # Import the HTML to PDF library
 
 app = Flask(__name__)
 
@@ -137,6 +138,9 @@ def build_iungo_xlsx(order):
     buf.seek(0)
     return buf
 
+# ==========================================
+# DOOR #1: The Excel Generator
+# ==========================================
 @app.route("/generate", methods=["POST"])
 def generate():
     data = request.get_json()
@@ -149,11 +153,8 @@ def generate():
 
     items = []
     for i in order.get("items", []):
-        # --- NEW LOGIC: DISTINGUISH CODES ---
-        # Generic 'codice' goes ONLY to itemCode (Articolo). 
-        # supplierCode is ONLY filled if explicitly provided as a separate field.
         item_code = i.get("itemCode") or i.get("codice") or ""
-        supplier_code = i.get("supplierCode", "") # Leave blank if not mentioned differently
+        supplier_code = i.get("supplierCode", "")
         
         items.append({
             "itemCode": item_code,
@@ -181,6 +182,45 @@ def generate():
     return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                      as_attachment=True, download_name=filename)
 
+# ==========================================
+# DOOR #2: The PDF Generator (NEW)
+# ==========================================
+@app.route('/html-to-pdf', methods=['POST'])
+def html_to_pdf():
+    # 1. Grab the JSON that n8n sends to us
+    data = request.get_json()
+    
+    # Check if the JSON has the "html" string inside it
+    if not data or 'html' not in data:
+        return {"error": "No HTML content provided"}, 400
+        
+    html_content = data['html']
+    
+    # 2. Create an empty bucket in the server's memory to hold the PDF
+    pdf_buffer = io.BytesIO()
+    
+    # 3. Use the xhtml2pdf library (pisa) to turn the HTML into a real PDF and put it in the bucket
+    pisa_status = pisa.CreatePDF(html_content, dest=pdf_buffer)
+    
+    # If the library failed, send an error back to n8n
+    if pisa_status.err:
+        return {"error": "Failed to generate PDF"}, 500
+        
+    # 4. "Rewind" the bucket so it can be read from the beginning
+    pdf_buffer.seek(0)
+    
+    # Figure out the file name (use the title from n8n, or a default)
+    title = data.get('title', 'Order_Document')
+    
+    # Send the bucket back to n8n as a physical file attachment
+    return send_file(
+        pdf_buffer, 
+        mimetype='application/pdf', 
+        as_attachment=True, 
+        download_name=f"{title}.pdf"
+    )
+
+# --- START THE APP ---
 if __name__ == "__main__":
     import os
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
