@@ -34,7 +34,7 @@ When **n8n** extracts order data from varied sources, it sends a JSON payload to
 
 1.  **Extraction**: `n8n` cleanses data from incoming order formats.
 2.  **Request**: `n8n` sends a POST request to this service on Railway.
-3.  **Generation**: `pp.py` builds the `.xlsx` file using `openpyxl`.
+3.  **Generation**: `app.py` builds the `.xlsx` file using `openpyxl`.
 4.  **Completion**: The binary file is returned to `n8n` for delivery to Google Drive or the final customer.
 
 ---
