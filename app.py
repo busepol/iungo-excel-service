@@ -300,13 +300,12 @@ def generate_pdf():
         pdf_buffer = io.BytesIO()
         pdf.output(pdf_buffer)
         pdf_buffer.seek(0)
-
-        safe_name = customer_name.replace(' ', '_').replace('/', '')
+        
         return send_file(
             pdf_buffer,
             mimetype="application/pdf",
             as_attachment=True,
-            download_name=f"REGALIDEA_PDF_{safe_name}.pdf"
+            download_name=f"IUNGO_ORDER_{order_data['customerName'].replace(' ', '_')}.pdf"
         )
         
     except Exception as e:
