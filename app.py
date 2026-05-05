@@ -285,7 +285,7 @@ def generate_pdf():
         pdf.cell(35, 6, "P.IVA FORNITORE:", border=1, align="R", fill=False)
         pdf.set_fill_color(*gray_fill)
         pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
-        pdf.cell(127, 6, "IT00000000000", border=1, fill=True, ln=True)
+        pdf.cell(127, 6, "IT00926410010", border=1, fill=True, ln=True)
         pdf.ln(5)
 
         # ==========================================
