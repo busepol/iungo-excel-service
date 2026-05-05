@@ -70,7 +70,7 @@ def build_iungo_xlsx(order):
         (4, "NOME CLIENTE:",    order.get("customerName", ""), YELLOW, False),
         (5, "P.IVA CLIENTE:",   order.get("customerVat", ""),  YELLOW, False),
         (6, "NOME FORNITORE:",  "REGALIDEA S.R.L.", GRAY, True),
-        (7, "P.IVA FORNITORE:", "IT00000000000", GRAY, True),
+        (7, "P.IVA FORNITORE:", "IT00926410010", GRAY, True),
     ]
 
     for r, label, val, bg, lck in info_left:
