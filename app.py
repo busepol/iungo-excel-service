@@ -59,22 +59,25 @@ def build_iungo_xlsx(order):
     style_cell(ws, "A2", "I campi GIALLI sono da compilare dal fornitore. Non modificare la struttura.",
                italic=True, sz=9, bg=MID_BLUE, fg=WHITE, ha="center")
 
-    # Info Block - UPDATED TO INCLUDE TEL, EMAIL, FAX
+    # Info Block
+    # Left side: rows 4-10 (7 fields: doc number, issue date, delivery date,
+    #            destination, phone, email, fax)
+    # Right side: rows 4-7 (4 fields: customer name, customer vat,
+    #             supplier name, supplier vat) — rows 8-10 left blank on right
     info_left = [
-        (4, "N. DOCUMENTO:",    order.get("docNumber", ""), GRAY,   True),
-        (5, "DATA EMISSIONE:",  order.get("issueDate", ""), GRAY,   True),
-        (6, "DATA CONSEGNA:",   order.get("deliveryDate", ""), YELLOW, False),
-        (7, "DESTINAZIONE:",    order.get("destination", ""), YELLOW, False),
-        (8, "TELEFONO:",        order.get("phone", ""), YELLOW, False),
-        (9, "EMAIL:FAX:",       order.get("email", ""), YELLOW, False),
-        (10, "FAX:",            order.get("fax", ""), YELLOW, False),
-        
+        (4,  "N. DOCUMENTO:",   order.get("docNumber", ""),    GRAY,   True),
+        (5,  "DATA EMISSIONE:", order.get("issueDate", ""),    GRAY,   True),
+        (6,  "DATA CONSEGNA:",  order.get("deliveryDate", ""), YELLOW, False),
+        (7,  "DESTINAZIONE:",   order.get("destination", ""),  YELLOW, False),
+        (8,  "TELEFONO:",       order.get("phone", ""),        YELLOW, False),
+        (9,  "EMAIL:",          order.get("email", ""),        YELLOW, False),
+        (10, "FAX:",            order.get("fax", ""),          YELLOW, False),
     ]
     info_right = [
         (4, "NOME CLIENTE:",    order.get("customerName", ""), YELLOW, False),
         (5, "P.IVA CLIENTE:",   order.get("customerVat", ""),  YELLOW, False),
-        (6, "NOME FORNITORE:",  "REGALIDEA S.R.L.", GRAY, True),
-        (7, "P.IVA FORNITORE:", "IT00926410010", GRAY, True),
+        (6, "NOME FORNITORE:",  "REGALIDEA S.R.L.",            GRAY,   True),
+        (7, "P.IVA FORNITORE:", "IT00926410010",               GRAY,   True),
     ]
 
     for r, label, val, bg, lck in info_left:
@@ -89,49 +92,70 @@ def build_iungo_xlsx(order):
         ws.merge_cells(start_row=r, start_column=8, end_row=r, end_column=9)
         style_cell(ws, ws.cell(row=r, column=8), val, bg=bg, locked=lck)
 
-    # Totals (Shifted to row 10 to accommodate extra header info)
-    style_cell(ws, "B10", "TOTALE QUANTITÀ:", bold=True, fg=DARK_BLUE, ha="right")
-    ws.merge_cells("C10:E10")
-    style_cell(ws, "C10", "=SUM(F15:F500)", bg=LIGHT_BLUE, bold=True, ha="center", fmt="#,##0")
+    # Fill right-side cells (rows 8-10) with plain gray so they look intentional
+    for r in range(8, 11):
+        for col in [7, 8]:
+            c = ws.cell(row=r, column=col)
+            c.fill = PatternFill("solid", start_color=GRAY)
+            c.border = get_border()
+        ws.merge_cells(start_row=r, start_column=8, end_row=r, end_column=9)
 
-    style_cell(ws, "G10", "TOTALE IMPORTO:", bold=True, fg=DARK_BLUE, ha="right")
-    ws.merge_cells("H10:I10")
-    style_cell(ws, "H10", "=SUM(I15:I500)", bg=LIGHT_BLUE, bold=True, ha="center", fmt='€ #,##0.00')
+    # Totals — row 11 (one row after the last info row)
+    TOTALS_ROW = 11
+    style_cell(ws, f"B{TOTALS_ROW}", "TOTALE QUANTITÀ:", bold=True, fg=DARK_BLUE, ha="right")
+    ws.merge_cells(f"C{TOTALS_ROW}:E{TOTALS_ROW}")
+    style_cell(ws, f"C{TOTALS_ROW}", f"=SUM(F{TOTALS_ROW+4}:F500)",
+               bg=LIGHT_BLUE, bold=True, ha="center", fmt="#,##0")
 
-    # Table Headers
-    headers = ["#", "CODICE ARTICOLO", "CODICE FORNITORE", "DESCRIZIONE", "U.M.", "QTÀ", "PREZZO LORDO €", "SCONTO %", "IMPORTO NETTO €"]
+    style_cell(ws, f"G{TOTALS_ROW}", "TOTALE IMPORTO:", bold=True, fg=DARK_BLUE, ha="right")
+    ws.merge_cells(f"H{TOTALS_ROW}:I{TOTALS_ROW}")
+    style_cell(ws, f"H{TOTALS_ROW}", f"=SUM(I{TOTALS_ROW+4}:I500)",
+               bg=LIGHT_BLUE, bold=True, ha="center", fmt='€ #,##0.00')
+
+    # Table Headers — row 12 (one blank spacer row 12, headers row 13)
+    HEADER_ROW = 13
+    # Row 12: blank spacer — style it nicely
+    for col in range(1, 10):
+        c = ws.cell(row=12, column=col)
+        c.fill = PatternFill("solid", start_color=GRAY)
+        c.border = get_border()
+
+    headers = ["#", "CODICE ARTICOLO", "CODICE FORNITORE", "DESCRIZIONE",
+               "U.M.", "QTÀ", "PREZZO LORDO €", "SCONTO %", "IMPORTO NETTO €"]
     for col, text in enumerate(headers, 1):
-        c = ws.cell(row=14, column=col, value=text)
+        c = ws.cell(row=HEADER_ROW, column=col, value=text)
         style_cell(ws, c, bold=True, bg=DARK_BLUE, fg=WHITE, ha="center", sz=8)
 
-    # Line Items
+    # Line Items — start row 14
+    FIRST_DATA_ROW = HEADER_ROW + 1
     items = order.get("items", [])
     for idx, item in enumerate(items):
-        row = 15 + idx
+        row = FIRST_DATA_ROW + idx
         netto_formula = f"=F{row}*G{row}*(1-H{row}/100)"
         
         row_data = [
-            (1, idx+1, GRAY, True),                        
-            (2, item.get("itemCode",""), YELLOW, False),   
-            (3, item.get("supplierCode",""), YELLOW, False),
-            (4, item.get("description",""), YELLOW, False),
-            (5, item.get("um","PZ"), YELLOW, False),       
-            (6, item.get("qty",0), YELLOW, False),         
-            (7, item.get("grossPrice",0), YELLOW, False),  
-            (8, item.get("discount",0), YELLOW, False),    
-            (9, netto_formula, LIGHT_BLUE, True)            
+            (1, idx+1,                       GRAY,       True),
+            (2, item.get("itemCode", ""),     YELLOW,     False),
+            (3, item.get("supplierCode", ""), YELLOW,     False),
+            (4, item.get("description", ""),  YELLOW,     False),
+            (5, item.get("um", "PZ"),         YELLOW,     False),
+            (6, item.get("qty", 0),           YELLOW,     False),
+            (7, item.get("grossPrice", 0),    YELLOW,     False),
+            (8, item.get("discount", 0),      YELLOW,     False),
+            (9, netto_formula,                LIGHT_BLUE, True),
         ]
 
         for col, val, bg, lck in row_data:
             fmt = '€ #,##0.00' if col in [7, 9] else ("#,##0" if col == 6 else None)
-            style_cell(ws, ws.cell(row=row, column=col), val, bg=bg, locked=lck, fmt=fmt, ha="center" if col != 4 else "left")
+            style_cell(ws, ws.cell(row=row, column=col), val, bg=bg, locked=lck,
+                       fmt=fmt, ha="center" if col != 4 else "left")
 
     # Empty filler rows
-    for r in range(15 + len(items), 101):
+    for r in range(FIRST_DATA_ROW + len(items), 101):
         for c in range(1, 10):
             bg = YELLOW if 2 <= c <= 8 else (GRAY if c == 1 else LIGHT_BLUE)
             style_cell(ws, ws.cell(row=r, column=c), bg=bg, locked=not (2 <= c <= 8))
-            if c == 9: 
+            if c == 9:
                 ws.cell(row=r, column=9).value = f"=F{r}*G{r}*(1-H{r}/100)"
                 ws.cell(row=r, column=9).number_format = '€ #,##0.00'
 
@@ -239,77 +263,80 @@ def generate_pdf():
         email = str(order.get("email", ""))
         fax = str(order.get("fax", ""))
 
-        # INFO BLOCK
-        # ROW 1
-        pdf.set_text_color(*blue_text)
-        pdf.cell(35, 6, "N. DOCUMENTO:", border=1, align="R", fill=False)
-        pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
-        pdf.set_fill_color(*gray_fill)
-        pdf.cell(80, 6, doc_num, border=1, fill=True)
+        # ==========================================
+        # INFO BLOCK — two-column layout
+        # Left column: label (35mm) + value (80mm)
+        # Right column: label (35mm) + value (127mm)
+        # Rows where the right column has no content get a gray placeholder.
+        # ==========================================
+        ROW_H = 6
 
-        pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
-        pdf.cell(35, 6, "NOME CLIENTE:", border=1, align="R", fill=False)
-        pdf.set_fill_color(*yellow_fill)
-        pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
-        pdf.cell(127, 6, customer_name[:65], border=1, fill=True, ln=True)
+        def left_label(text):
+            pdf.set_text_color(*blue_text)
+            pdf.set_font("helvetica", "B", 9)
+            pdf.cell(35, ROW_H, text, border=1, align="R")
 
-        # ROW 2
-        pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
-        pdf.cell(35, 6, "DATA EMISSIONE:", border=1, align="R", fill=False)
-        pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
-        pdf.set_fill_color(*gray_fill)
-        pdf.cell(80, 6, issue_date, border=1, fill=True)
+        def left_value(text, fill_color=gray_fill):
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_font("helvetica", "", 9)
+            pdf.set_fill_color(*fill_color)
+            pdf.cell(80, ROW_H, text, border=1, fill=True)
 
-        pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
-        pdf.cell(35, 6, "P.IVA CLIENTE:", border=1, align="R", fill=False)
-        pdf.set_fill_color(*yellow_fill)
-        pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
-        pdf.cell(127, 6, customer_vat, border=1, fill=True, ln=True)
+        def right_label(text):
+            pdf.set_text_color(*blue_text)
+            pdf.set_font("helvetica", "B", 9)
+            pdf.cell(35, ROW_H, text, border=1, align="R")
 
-        # ROW 3
-        pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
-        pdf.cell(35, 6, "DATA CONSEGNA:", border=1, align="R", fill=False)
-        pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
-        pdf.set_fill_color(*yellow_fill)
-        pdf.cell(80, 6, del_date, border=1, fill=True)
+        def right_value(text, fill_color=yellow_fill, newline=True):
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_font("helvetica", "", 9)
+            pdf.set_fill_color(*fill_color)
+            pdf.cell(127, ROW_H, text, border=1, fill=True, ln=newline)
 
-        pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
-        pdf.cell(35, 6, "NOME FORNITORE:", border=1, align="R", fill=False)
-        pdf.set_fill_color(*gray_fill)
-        pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
-        pdf.cell(127, 6, "REGALIDEA S.R.L.", border=1, fill=True, ln=True)
+        def right_empty(newline=True):
+            """Blank gray cell on the right when there is no matching field."""
+            pdf.set_fill_color(*gray_fill)
+            pdf.cell(162, ROW_H, "", border=1, fill=True, ln=newline)
 
-        # ROW 4
-        pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
-        pdf.cell(35, 6, "DESTINAZIONE:", border=1, align="R", fill=False)
-        pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
-        pdf.set_fill_color(*yellow_fill)
-        pdf.cell(80, 6, dest, border=1, fill=True)
+        # Row 1 — N. DOCUMENTO / NOME CLIENTE
+        left_label("N. DOCUMENTO:")
+        left_value(doc_num, gray_fill)
+        right_label("NOME CLIENTE:")
+        right_value(customer_name[:65], yellow_fill)
 
-        pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
-        pdf.cell(35, 6, "P.IVA FORNITORE:", border=1, align="R", fill=False)
-        pdf.set_fill_color(*gray_fill)
-        pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
-        pdf.cell(127, 6, "IT00926410010", border=1, fill=True, ln=True)
+        # Row 2 — DATA EMISSIONE / P.IVA CLIENTE
+        left_label("DATA EMISSIONE:")
+        left_value(issue_date, gray_fill)
+        right_label("P.IVA CLIENTE:")
+        right_value(customer_vat, yellow_fill)
 
-        # ROW 5 (CONTACT INFO)
-        pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
-        pdf.cell(35, 6, "TELEFONO:", border=1, align="R", fill=False)
-        pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
-        pdf.set_fill_color(*yellow_fill)
-        pdf.cell(80, 6, phone, border=1, fill=True)
+        # Row 3 — DATA CONSEGNA / NOME FORNITORE
+        left_label("DATA CONSEGNA:")
+        left_value(del_date, yellow_fill)
+        right_label("NOME FORNITORE:")
+        right_value("REGALIDEA S.R.L.", gray_fill)
 
-        pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
-        pdf.cell(35, 6, "EMAIL:", border=1, align="R", fill=False)
-        pdf.set_fill_color(*yellow_fill)
-        pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
-        pdf.cell(80, 6, email, border=1, fill=True, ln=True)
+        # Row 4 — DESTINAZIONE / P.IVA FORNITORE
+        left_label("DESTINAZIONE:")
+        left_value(dest, yellow_fill)
+        right_label("P.IVA FORNITORE:")
+        right_value("IT00926410010", gray_fill)
 
-        pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
-        pdf.cell(35, 6, "FAX:", border=1, align="R", fill=False)
-        pdf.set_fill_color(*yellow_fill)
-        pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
-        pdf.cell(80, 6, fax, border=1, fill=True, ln=True)
+        # Row 5 — TELEFONO / (no right field)
+        left_label("TELEFONO:")
+        left_value(phone, yellow_fill)
+        right_empty()
+
+        # Row 6 — EMAIL / (no right field)
+        left_label("EMAIL:")
+        left_value(email, yellow_fill)
+        right_empty()
+
+        # Row 7 — FAX / (no right field)
+        left_label("FAX:")
+        left_value(fax, yellow_fill)
+        right_empty()
+
         pdf.ln(5)
 
         # ==========================================
