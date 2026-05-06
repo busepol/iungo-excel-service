@@ -66,13 +66,15 @@ def build_iungo_xlsx(order):
         (6, "DATA CONSEGNA:",   order.get("deliveryDate", ""), YELLOW, False),
         (7, "DESTINAZIONE:",    order.get("destination", ""), YELLOW, False),
         (8, "TELEFONO:",        order.get("phone", ""), YELLOW, False),
+        (9, "EMAIL:FAX:",       order.get("email", ""), YELLOW, False),
+        (10, "FAX:",            order.get("fax", ""), YELLOW, False),
+        
     ]
     info_right = [
         (4, "NOME CLIENTE:",    order.get("customerName", ""), YELLOW, False),
         (5, "P.IVA CLIENTE:",   order.get("customerVat", ""),  YELLOW, False),
         (6, "NOME FORNITORE:",  "REGALIDEA S.R.L.", GRAY, True),
         (7, "P.IVA FORNITORE:", "IT00926410010", GRAY, True),
-        (8, "EMAIL / FAX:",     f"{order.get('email', '')} / {order.get('fax', '')}", YELLOW, False),
     ]
 
     for r, label, val, bg, lck in info_left:
@@ -234,7 +236,8 @@ def generate_pdf():
         del_date = str(order.get("deliveryDate") or order.get("deliveryWindow") or "")[:10]
         dest = str(order.get("luogoConsegna") or order.get("destination") or "")[:65]
         phone = str(order.get("phone", ""))
-        email_fax = f"{order.get('email', '')} / {order.get('fax', '')}"
+        email = str(order.get("email", ""))
+        fax = str(order.get("fax", ""))
 
         # INFO BLOCK
         # ROW 1
@@ -297,10 +300,16 @@ def generate_pdf():
         pdf.cell(80, 6, phone, border=1, fill=True)
 
         pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
-        pdf.cell(35, 6, "EMAIL / FAX:", border=1, align="R", fill=False)
+        pdf.cell(35, 6, "EMAIL:", border=1, align="R", fill=False)
         pdf.set_fill_color(*yellow_fill)
         pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
-        pdf.cell(127, 6, email_fax, border=1, fill=True, ln=True)
+        pdf.cell(80, 6, email, border=1, fill=True, ln=True)
+
+        pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
+        pdf.cell(35, 6, "FAX:", border=1, align="R", fill=False)
+        pdf.set_fill_color(*yellow_fill)
+        pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
+        pdf.cell(80, 6, fax, border=1, fill=True, ln=True)
         pdf.ln(5)
 
         # ==========================================
