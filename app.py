@@ -10,7 +10,7 @@ from fpdf import FPDF # Pure Python PDF library (no Railway errors!)
 app = Flask(__name__)
 
 # ==========================================
-# EXCEL STYLING & HELPERS (Your exact code)
+# EXCEL STYLING & HELPERS
 # ==========================================
 DARK_BLUE  = "203764"   
 MID_BLUE   = "305496"   
@@ -59,18 +59,20 @@ def build_iungo_xlsx(order):
     style_cell(ws, "A2", "I campi GIALLI sono da compilare dal fornitore. Non modificare la struttura.",
                italic=True, sz=9, bg=MID_BLUE, fg=WHITE, ha="center")
 
-    # Info Block
+    # Info Block - UPDATED TO INCLUDE TEL, EMAIL, FAX
     info_left = [
         (4, "N. DOCUMENTO:",    order.get("docNumber", ""), GRAY,   True),
         (5, "DATA EMISSIONE:",  order.get("issueDate", ""), GRAY,   True),
         (6, "DATA CONSEGNA:",   order.get("deliveryDate", ""), YELLOW, False),
         (7, "DESTINAZIONE:",    order.get("destination", ""), YELLOW, False),
+        (8, "TELEFONO:",        order.get("phone", ""), YELLOW, False),
     ]
     info_right = [
         (4, "NOME CLIENTE:",    order.get("customerName", ""), YELLOW, False),
         (5, "P.IVA CLIENTE:",   order.get("customerVat", ""),  YELLOW, False),
         (6, "NOME FORNITORE:",  "REGALIDEA S.R.L.", GRAY, True),
         (7, "P.IVA FORNITORE:", "IT00926410010", GRAY, True),
+        (8, "EMAIL / FAX:",     f"{order.get('email', '')} / {order.get('fax', '')}", YELLOW, False),
     ]
 
     for r, label, val, bg, lck in info_left:
@@ -85,14 +87,14 @@ def build_iungo_xlsx(order):
         ws.merge_cells(start_row=r, start_column=8, end_row=r, end_column=9)
         style_cell(ws, ws.cell(row=r, column=8), val, bg=bg, locked=lck)
 
-    # Totals
-    style_cell(ws, "B9", "TOTALE QUANTITÀ:", bold=True, fg=DARK_BLUE, ha="right")
-    ws.merge_cells("C9:E9")
-    style_cell(ws, "C9", "=SUM(F15:F500)", bg=LIGHT_BLUE, bold=True, ha="center", fmt="#,##0")
+    # Totals (Shifted to row 10 to accommodate extra header info)
+    style_cell(ws, "B10", "TOTALE QUANTITÀ:", bold=True, fg=DARK_BLUE, ha="right")
+    ws.merge_cells("C10:E10")
+    style_cell(ws, "C10", "=SUM(F15:F500)", bg=LIGHT_BLUE, bold=True, ha="center", fmt="#,##0")
 
-    style_cell(ws, "G9", "TOTALE IMPORTO:", bold=True, fg=DARK_BLUE, ha="right")
-    ws.merge_cells("H9:I9")
-    style_cell(ws, "H9", "=SUM(I15:I500)", bg=LIGHT_BLUE, bold=True, ha="center", fmt='€ #,##0.00')
+    style_cell(ws, "G10", "TOTALE IMPORTO:", bold=True, fg=DARK_BLUE, ha="right")
+    ws.merge_cells("H10:I10")
+    style_cell(ws, "H10", "=SUM(I15:I500)", bg=LIGHT_BLUE, bold=True, ha="center", fmt='€ #,##0.00')
 
     # Table Headers
     headers = ["#", "CODICE ARTICOLO", "CODICE FORNITORE", "DESCRIZIONE", "U.M.", "QTÀ", "PREZZO LORDO €", "SCONTO %", "IMPORTO NETTO €"]
@@ -115,7 +117,7 @@ def build_iungo_xlsx(order):
             (6, item.get("qty",0), YELLOW, False),         
             (7, item.get("grossPrice",0), YELLOW, False),  
             (8, item.get("discount",0), YELLOW, False),    
-            (9, netto_formula, LIGHT_BLUE, True)           
+            (9, netto_formula, LIGHT_BLUE, True)            
         ]
 
         for col, val, bg, lck in row_data:
@@ -175,6 +177,9 @@ def generate():
         "destination": order.get("luogoConsegna") or order.get("destination") or "",
         "customerName": order.get("customer") or order.get("pointOfSale") or "",
         "customerVat": order.get("customerVat", ""),
+        "phone": order.get("phone", ""),
+        "email": order.get("email", ""),
+        "fax": order.get("fax", ""),
         "items": items
     }
 
@@ -199,12 +204,11 @@ class RegalideaPDF(FPDF):
         self.ln(5)
 
 # ==========================================
-# ROUTE 2: THE PDF GENERATOR (UPGRADED 1:1 EXCEL LAYOUT)
+# ROUTE 2: THE PDF GENERATOR
 # ==========================================
 @app.route("/generate-pdf", methods=["POST"])
 def generate_pdf():
     try:
-        # force=True ignores missing headers from n8n
         data = request.get_json(force=True) 
         if not data: return {"error": "No JSON body received"}, 400
         
@@ -220,9 +224,8 @@ def generate_pdf():
         gray_fill = (242, 242, 242)
         light_blue_fill = (217, 225, 242)
         
-        # --- PREPARE DATA (Graceful fallbacks if fields are empty) ---
+        # --- PREPARE DATA ---
         now = datetime.datetime.now()
-        # Allows you to pass orderNumber from n8n, else generates one automatically
         doc_num = str(order.get("orderNumber") or order.get("docNumber") or f"ORD-{now.year}-{str(int(time.time()))[-6:]}")
         issue_date = now.strftime("%d/%m/%Y")
         
@@ -230,11 +233,10 @@ def generate_pdf():
         customer_vat = str(order.get("customerVat") or order.get("piva") or "")
         del_date = str(order.get("deliveryDate") or order.get("deliveryWindow") or "")[:10]
         dest = str(order.get("luogoConsegna") or order.get("destination") or "")[:65]
+        phone = str(order.get("phone", ""))
+        email_fax = f"{order.get('email', '')} / {order.get('fax', '')}"
 
-        # ==========================================
-        # INFO BLOCK (4 Rows exactly like Excel)
-        # ==========================================
-        
+        # INFO BLOCK
         # ROW 1
         pdf.set_text_color(*blue_text)
         pdf.cell(35, 6, "N. DOCUMENTO:", border=1, align="R", fill=False)
@@ -286,6 +288,19 @@ def generate_pdf():
         pdf.set_fill_color(*gray_fill)
         pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
         pdf.cell(127, 6, "IT00926410010", border=1, fill=True, ln=True)
+
+        # ROW 5 (CONTACT INFO)
+        pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
+        pdf.cell(35, 6, "TELEFONO:", border=1, align="R", fill=False)
+        pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
+        pdf.set_fill_color(*yellow_fill)
+        pdf.cell(80, 6, phone, border=1, fill=True)
+
+        pdf.set_text_color(*blue_text); pdf.set_font("helvetica", "B", 9)
+        pdf.cell(35, 6, "EMAIL / FAX:", border=1, align="R", fill=False)
+        pdf.set_fill_color(*yellow_fill)
+        pdf.set_text_color(0, 0, 0); pdf.set_font("helvetica", "", 9)
+        pdf.cell(127, 6, email_fax, border=1, fill=True, ln=True)
         pdf.ln(5)
 
         # ==========================================
@@ -309,7 +324,7 @@ def generate_pdf():
             total_amount += (qty * price * (1 - (discount / 100)))
 
         # ==========================================
-        # TOTALS ROW (Moved to Top like Excel)
+        # TOTALS ROW
         # ==========================================
         pdf.set_font("helvetica", "B", 9)
         pdf.set_text_color(*blue_text)
@@ -326,7 +341,7 @@ def generate_pdf():
         pdf.ln(10)
 
         # ==========================================
-        # TABLE HEADERS (9 Columns like Excel)
+        # TABLE HEADERS
         # ==========================================
         pdf.set_fill_color(32, 55, 100)
         pdf.set_text_color(255, 255, 255)
@@ -362,11 +377,11 @@ def generate_pdf():
 
             net = qty * price * (1 - (discount / 100))
 
-            # Index Col (Gray)
+            # Index Col
             pdf.set_fill_color(*gray_fill)
             pdf.cell(10, 6, str(idx), border=1, align="C", fill=True)
 
-            # Main Cols (Yellow)
+            # Main Cols
             pdf.set_fill_color(*yellow_fill)
             pdf.cell(25, 6, code, border=1, align="C", fill=True)
             pdf.cell(27, 6, sup_code, border=1, align="C", fill=True)
@@ -376,7 +391,7 @@ def generate_pdf():
             pdf.cell(22, 6, f"EUR {price:.2f}", border=1, align="R", fill=True)
             pdf.cell(20, 6, str(int(discount)), border=1, align="C", fill=True)
             
-            # Netto Col (Light Blue)
+            # Netto Col
             pdf.set_fill_color(*light_blue_fill)
             pdf.cell(50, 6, f"EUR {net:.2f}", border=1, align="R", fill=True)
             pdf.ln()
@@ -386,8 +401,7 @@ def generate_pdf():
         pdf_buffer.seek(0)
         
         safe_name = customer_name.replace(' ', '_').replace('/', '')
-        if not safe_name:
-            safe_name = "Sconosciuto"
+        if not safe_name: safe_name = "Sconosciuto"
         
         return send_file(
             pdf_buffer,
@@ -397,7 +411,6 @@ def generate_pdf():
         )
         
     except Exception as e:
-        # CRASH REPORTER: If it fails, send the exact error back to n8n!
         import traceback
         return {"CRASH_REPORT": str(e), "DETAILS": traceback.format_exc()}, 500
 
