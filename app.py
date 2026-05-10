@@ -256,7 +256,7 @@ def generate_pdf():
         issue_date = now.strftime("%d/%m/%Y")
         
         customer_name = str(order.get("customer") or order.get("pointOfSale") or "")
-        customer_vat = str(order.get("customerVat") or order.get("piva") or "")
+        customer_vat = customer_vat = str(order.get("customerVat") or order.get("piva") or order.get("ivaCliente") or "")
         del_date = str(order.get("deliveryDate") or order.get("deliveryWindow") or "")[:10]
         dest = str(order.get("luogoConsegna") or order.get("destination") or "")[:65]
         phone = str(order.get("phone", ""))
